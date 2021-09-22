@@ -6,7 +6,6 @@ import com.github.hwywl.sql.*;
 import com.github.hwywl.utils.JsonToSqlUtil;
 import org.junit.Test;
 
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
