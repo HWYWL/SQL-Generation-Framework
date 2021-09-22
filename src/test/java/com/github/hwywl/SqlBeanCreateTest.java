@@ -6,6 +6,7 @@ import com.github.hwywl.sql.*;
 import com.github.hwywl.utils.JsonToSqlUtil;
 import org.junit.Test;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -173,7 +174,7 @@ public class SqlBeanCreateTest {
         List<Aggregation> aggregations = Arrays.asList(orderId, realPayAmount);
 
         // 子查询的字段
-        List<String> joinFields = Arrays.asList("app_id", "platform_id","order_id", "real_pay_amount");
+        List<String> joinFields = Arrays.asList("app_id", "platform_id", "order_id", "real_pay_amount");
         // 子查询 SQL表
         Table joinTable = Table.builder().tableName("event_consumer_game_order_status").alias("join_gos").build();
         // 子查询 SQL条件
@@ -188,6 +189,86 @@ public class SqlBeanCreateTest {
 
         QueryModel model = QueryModel.builder().table(table).aggregation(aggregations)
                 .joins(Collections.singletonList(join)).groupBy(groupBys).build();
+        String sql = JsonToSqlUtil.beanGeneratedSql(model);
+
+        System.out.println(JSONUtil.toJsonStr(model));
+        System.out.println(sql);
+    }
+
+    /**
+     * 生成一条左连接查询的SQL
+     * select overview_stat.statistics_date, overview_stat.app_id, overview_stat.platform_id, coin_stat.statistics_date,
+     * coin_stat.app_id, coin_stat.platform_id,  sum(register_account) as "overview_stat_SUM_register_account" ,
+     * sum(login_account) as "overview_stat_SUM_login_account" ,  sum(coin_sum) as "overview_stat_SUM_coin_sum" ,
+     * sum(change_num) as "overview_stat_SUM_change_num"  from  (select statistics_date, app_id, platform_id,
+     * sum(register_account) as "register_account" ,  sum(login_account) as "login_account"  from overview_stat as overview_stat
+     * where  statistics_date >= '2021-09-22' group by statistics_date,app_id,platform_id)  as overview_stat
+     * LEFT join (select statistics_date, app_id, platform_id,  sum(coin_sum) as "coin_sum" ,  sum(change_num) as "change_num"
+     * from coin_stat as coin_stat  where  statistics_date >= '2021-09-22' group by statistics_date,app_id,platform_id)  as coin_stat
+     * on  overview_stat.statistics_date = coin_stat.statistics_date and overview_stat.app_id = coin_stat.app_id and
+     * overview_stat.platform_id = coin_stat.platform_id group by overview_stat.statistics_date,overview_stat.app_id,overview_stat.platform_id,coin_stat.statistics_date,coin_stat.app_id,coin_stat.platform_id
+     */
+    @Test
+    public void createQueryLeftTest() {
+        // SQL表,左连接如果和table的名称相同，则替换
+        Table table = Table.builder().tableName("overview_stat").alias("overview_stat").build();
+
+        // 表1聚合条件
+        Aggregation agg1Table1 = Aggregation.builder().field("register_account").alias("register_account")
+                .aggregationMode(AggregationOperators.SUM.getName()).build();
+        Aggregation agg1Table2 = Aggregation.builder().field("login_account").alias("login_account")
+                .aggregationMode(AggregationOperators.SUM.getName()).build();
+
+        // 表1查询条件
+        Condition condition1 = Condition.builder().aboveConditions(LogicalOperators.AND).field("statistics_date")
+                .middleConditions(RelationalOperators.GE).fieldValue("2021-09-22").build();
+
+        // 表1查询条件
+        Join build1 = Join.builder().table(table).aggregation(Arrays.asList(agg1Table1, agg1Table2))
+                .condition(Collections.singletonList(condition1)).fields(Arrays.asList("statistics_date", "app_id", "platform_id"))
+                .groupBy(Arrays.asList("statistics_date", "app_id", "platform_id")).joinType(JoinOperators.Query_Subsystem.toString()).build();
+
+
+        // 表2
+        Table table2 = Table.builder().tableName("coin_stat").alias("coin_stat").build();
+        // 表2聚合条件
+        Aggregation agg2Table1 = Aggregation.builder().field("coin_sum").alias("coin_sum")
+                .aggregationMode(AggregationOperators.SUM.getName()).build();
+        Aggregation agg2Table2 = Aggregation.builder().field("change_num").alias("change_num")
+                .aggregationMode(AggregationOperators.SUM.getName()).build();
+
+        // 表2查询条件
+        Condition condition2 = Condition.builder().aboveConditions(LogicalOperators.AND).field("statistics_date")
+                .middleConditions(RelationalOperators.GE).fieldValue("2021-09-22").build();
+
+        // 连接表条件
+        Condition joinCondition1 = Condition.builder().aboveConditions(LogicalOperators.AND).field("overview_stat.statistics_date")
+                .middleConditions(RelationalOperators.EQ).fieldValue("coin_stat.statistics_date").build();
+        Condition joinCondition2 = Condition.builder().aboveConditions(LogicalOperators.AND).field("overview_stat.app_id")
+                .middleConditions(RelationalOperators.EQ).fieldValue("coin_stat.app_id").build();
+        Condition joinCondition3 = Condition.builder().aboveConditions(LogicalOperators.AND).field("overview_stat.platform_id")
+                .middleConditions(RelationalOperators.EQ).fieldValue("coin_stat.platform_id").build();
+
+        // 表2构造
+        Join build2 = Join.builder().table(table2).aggregation(Arrays.asList(agg2Table1, agg2Table2))
+                .condition(Collections.singletonList(condition2)).fields(Arrays.asList("statistics_date", "app_id", "platform_id"))
+                .groupBy(Arrays.asList("statistics_date", "app_id", "platform_id")).joinType(JoinOperators.LEFT.toString())
+                .joinCondition(Arrays.asList(joinCondition1, joinCondition2, joinCondition3)).build();
+
+
+        Aggregation agg1 = Aggregation.builder().field("register_account")
+                .aggregationMode(AggregationOperators.SUM.getName()).build();
+        Aggregation agg2 = Aggregation.builder().field("login_account")
+                .aggregationMode(AggregationOperators.SUM.getName()).build();
+        Aggregation agg3 = Aggregation.builder().field("coin_sum")
+                .aggregationMode(AggregationOperators.SUM.getName()).build();
+        Aggregation agg4 = Aggregation.builder().field("change_num")
+                .aggregationMode(AggregationOperators.SUM.getName()).build();
+
+        QueryModel model = QueryModel.builder().table(table).aggregation(Arrays.asList(agg1, agg2, agg3, agg4))
+                .joins(Arrays.asList(build1, build2))
+                .groupBy(Arrays.asList("overview_stat.statistics_date", "overview_stat.app_id", "overview_stat.platform_id",
+                        "coin_stat.statistics_date", "coin_stat.app_id", "coin_stat.platform_id")).build();
         String sql = JsonToSqlUtil.beanGeneratedSql(model);
 
         System.out.println(JSONUtil.toJsonStr(model));
